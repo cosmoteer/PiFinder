@@ -45,6 +45,12 @@ class UIStatus(UIModule):
             "options": ["right", "left", "flat", "CANCEL"],
             "callback": "side_switch",
         },
+        "Mnt Type": {
+            "type": "enum",
+            "value": "",
+            "options": ["ALTAZ", "EQ", "CANCEL"],
+            "callback": "side_switch",
+        },
         "Restart": {
             "type": "enum",
             "value": "",
@@ -94,6 +100,9 @@ class UIStatus(UIModule):
         self._config_options["Mnt Side"]["value"] = self.config_object.get_option(
             "screen_direction"
         )
+        self._config_options["Mnt Type"]["value"] = self.config_object.get_option(
+            "mount_type"
+        )
         self._config_options["Sleep Tim"]["value"] = self.config_object.get_option(
             "sleep_timeout"
         )
@@ -130,6 +139,17 @@ class UIStatus(UIModule):
         if option == "CANCEL":
             self._config_options["Mnt Side"]["value"] = self.config_object.get_option(
                 "screen_direction"
+            )
+            return False
+
+        self.message("Ok! Restarting", 10)
+        self.config_object.set_option("screen_direction", option)
+        sys_utils.restart_pifinder()
+
+    def mount_type_switch(self, option):
+        if option == "CANCEL":
+            self._config_options["Mnt Type"]["value"] = self.config_object.get_option(
+                "mount_type"
             )
             return False
 
