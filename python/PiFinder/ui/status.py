@@ -154,7 +154,7 @@ class UIStatus(UIModule):
             return False
 
         self.message("Ok! Restarting", 10)
-        self.config_object.set_option("screen_direction", option)
+        self.config_object.set_option("mount_type", option)
         sys_utils.restart_pifinder()
 
     def wifi_switch(self, option):
