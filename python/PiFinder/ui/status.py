@@ -7,6 +7,7 @@ This module contains all the UI Module classes
 import datetime
 import time
 import socket
+from math import modf
 
 from PiFinder.ui.base import UIModule
 from PiFinder import sys_utils
@@ -43,6 +44,12 @@ class UIStatus(UIModule):
             "type": "enum",
             "value": "",
             "options": ["right", "left", "flat", "CANCEL"],
+            "callback": "side_switch",
+        },
+        "Mnt Type": {
+            "type": "enum",
+            "value": "",
+            "options": ["ALTAZ", "EQ", "CANCEL"],
             "callback": "side_switch",
         },
         "Restart": {
@@ -94,6 +101,9 @@ class UIStatus(UIModule):
         self._config_options["Mnt Side"]["value"] = self.config_object.get_option(
             "screen_direction"
         )
+        self._config_options["Mnt Type"]["value"] = self.config_object.get_option(
+            "mount_type"
+        )
         self._config_options["Sleep Tim"]["value"] = self.config_object.get_option(
             "sleep_timeout"
         )
@@ -135,6 +145,17 @@ class UIStatus(UIModule):
 
         self.message("Ok! Restarting", 10)
         self.config_object.set_option("screen_direction", option)
+        sys_utils.restart_pifinder()
+
+    def mount_type_switch(self, option):
+        if option == "CANCEL":
+            self._config_options["Mnt Type"]["value"] = self.config_object.get_option(
+                "mount_type"
+            )
+            return False
+
+        self.message("Ok! Restarting", 10)
+        self.config_object.set_option("mount_type", option)
         sys_utils.restart_pifinder()
 
     def wifi_switch(self, option):
@@ -186,9 +207,14 @@ class UIStatus(UIModule):
                 + f" {stars_matched: >2}"
             )
 
+            ra = solution["RA"]
+            if ra < 0.0:
+                ra = ra + 360
+            mm, hh = modf(ra / 15.0)
+            _, mm = modf(mm * 60.0)
             self.status_dict[
                 "RA/DEC"
-            ] = f"{solution['RA'] : >6.2f}/{solution['Dec'] : >6.2f}"
+            ] = f"{hh:02.0f}h{mm:02.0f}m/{solution['Dec'] : >6.2f}"
 
             if solution["Az"]:
                 self.status_dict[
