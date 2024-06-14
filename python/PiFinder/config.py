@@ -5,6 +5,7 @@ This module handles non-volatile config options
 """
 import json, os
 from pathlib import Path
+from PiFinder import utils
 
 
 class Config:
@@ -13,7 +14,8 @@ class Config:
         load all settings from config file
         """
         cwd = Path.cwd()
-        self.config_file_path = Path(cwd, "../config.json")
+        self.config_file_path = Path(utils.data_dir, "config.json")
+
         self.default_file_path = Path(cwd, "../default_config.json")
         if not os.path.exists(self.config_file_path):
             self._config_dict = {}
@@ -31,4 +33,12 @@ class Config:
             json.dump(self._config_dict, config_file, indent=4)
 
     def get_option(self, option):
-        return self._config_dict.get(option, self._default_config_dict[option])
+        return self._config_dict.get(
+            option, self._default_config_dict.get(option, None)
+        )
+
+    def __str__(self):
+        return str(self._config_dict)
+
+    def __repr__(self):
+        return str(self._config_dict)

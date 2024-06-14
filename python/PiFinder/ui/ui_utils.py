@@ -1,3 +1,4 @@
+from os import truncate
 from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
 import PiFinder.utils as utils
 from PiFinder.ui.fonts import Fonts as fonts
@@ -40,24 +41,36 @@ class SpaceCalculator:
 class SpaceCalculatorFixed:
     """Calculates spaces for fixed-width fonts"""
 
-    def __init__(self, nr_chars):
+    def __init__(self, nr_chars, truncate_string=""):
         self.width = nr_chars
+        self.truncate_string = truncate_string
 
     def _calc_string(self, left, right, spaces) -> str:
         return f"{left}{'': <{spaces}}{right}"
 
-    def calculate_spaces(self, left: str, right: str) -> Tuple[int, str]:
+    def _truncate(self, left, right, trunc_left) -> str:
+        if trunc_left:
+            left_left = self.width - len(right) - 2
+            return f"{left[:left_left]}{self.truncate_string}{right}"
+        else:
+            right_left = self.width - len(left) - 2
+            return f"{left} {right[:right_left]}{self.truncate_string}"
+
+    def calculate_spaces(
+        self, left: str, right: str, empty_if_exceeds=True, trunc_left=False
+    ) -> Tuple[int, str]:
         """
         returns number of spaces
         """
-        spaces = 1
         lenleft = len(str(left))
         lenright = len(str(right))
+        spaces = max(0, self.width - (lenleft + lenright))
+        if spaces <= 0:
+            if empty_if_exceeds:
+                return -1, ""
+            else:
+                return 1, self._truncate(left, right, trunc_left)
 
-        if lenleft + lenright + 1 > self.width:
-            return -1, ""
-
-        spaces = self.width - (lenleft + lenright)
         result = self._calc_string(left, right, spaces)
         return spaces, result
 
@@ -70,11 +83,13 @@ class TextLayouterSimple:
         color,
         font=fonts.base,
         width=fonts.base_width,
+        embedded_color=False,
     ):
         self.text = text
         self.font = font
         self.color = color
         self.width = width
+        self.embedded_color = embedded_color
         self.drawobj = draw
         self.object_text: List[str] = []
         self.updated = True
@@ -98,9 +113,13 @@ class TextLayouterSimple:
 
     def draw(self, pos: Tuple[int, int] = (0, 0)):
         self.layout(pos)
-        # logging.debug(f"Drawing {self.object_text=}")
         self.drawobj.multiline_text(
-            pos, "\n".join(self.object_text), font=self.font, fill=self.color, spacing=0
+            pos,
+            "\n".join(self.object_text),
+            font=self.font,
+            fill=self.color,
+            embedded_color=self.embedded_color,
+            spacing=0,
         )
         self.after_draw(pos)
 
@@ -183,20 +202,29 @@ class TextLayouter(TextLayouterSimple):
         self.colors = colors
         self.start_line = 0
         self.available_lines = available_lines
-        self.scrolled = False
         self.pointer = 0
         self.updated = True
 
-    def next(self):
+    def next(self, direction=1):
         if self.nr_lines <= self.available_lines:
             return
-        self.pointer = (self.pointer + 1) % (self.nr_lines - self.available_lines + 1)
-        self.scrolled = True
+        self.pointer = (self.pointer + direction) % (
+            self.nr_lines - self.available_lines + 1
+        )
+        self.updated = True
 
-    def set_text(self, text):
+    def previous(self):
+        self.next(-1)
+
+    def set_text(self, text, reset_pointer=True):
         super().set_text(text)
-        self.pointer = 0
         self.nr_lines = len(text)
+        if reset_pointer:
+            self.pointer = 0
+
+    def set_available_lines(self, available_lines: int):
+        self.available_lines = available_lines
+        self.updated = True
 
     def _draw_pos(self, pos):
         xpos = 127
@@ -217,20 +245,15 @@ class TextLayouter(TextLayouterSimple):
 
     def layout(self, pos: Tuple[int, int] = (0, 0)):
         if self.updated:
-            # logging.debug(f"Updating {self.text=}")
             split_lines = re.split(r"\n|\n\n", self.text)
             self.object_text = []
             for line in split_lines:
                 self.object_text.extend(textwrap.wrap(line, width=self.width))
-            self.orig_object_text = self.object_text
-            self.object_text = self.object_text[0 : self.available_lines]
-            self.nr_lines = len(self.orig_object_text)
-        if self.scrolled:
-            self.object_text = self.orig_object_text[
+            self.nr_lines = len(self.object_text)
+            self.object_text = self.object_text[
                 self.pointer : self.pointer + self.available_lines
             ]
         self.updated = False
-        self.scrolled = False
 
     def after_draw(self, pos):
         if self.nr_lines > self.available_lines:
@@ -241,7 +264,6 @@ def shadow_outline_text(
     ri_draw, xy, text, align, font, fill, shadow_color, shadow=None, outline=None
 ):
     """draw shadowed and outlined text"""
-    print("shadow_outline_text")
     x, y = xy
     if shadow:
         ri_draw.text(
@@ -288,3 +310,23 @@ def shadow(ri_draw, xy, text, align, font, fill, shadowcolor):
     ri_draw.text((x, y - 1), text, align=align, font=font, fill=shadowcolor)
     ri_draw.text((x, y + 1), text, align=align, font=font, fill=shadowcolor)
     ri_draw.text((x, y), text, align=align, font=font, fill=fill)
+
+
+def normalize(name):
+    """Helper function to normalize names"""
+    return name.lower().replace(" ", "").replace("the ", "", 1).replace("-", "")
+
+
+def name_deduplicate(names: List[str], exclude: List[str]):
+    """From a list of object names (NGC 5000, NGC5000), remove duplicates"""
+    # Use a set for quick membership testing to remember names we've seen
+    seen = set()
+    result = []
+    norm_excludes = [normalize(x) for x in exclude]
+    for name in names:
+        # Normalize name for comparison
+        norm_name = normalize(name)
+        if norm_name not in seen and norm_name not in norm_excludes:
+            seen.add(norm_name)
+            result.append(name)  # Add the original name to the result
+    return result

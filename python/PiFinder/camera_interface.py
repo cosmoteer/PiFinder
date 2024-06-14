@@ -12,7 +12,6 @@ import os
 import queue
 import time
 from PIL import Image
-from PiFinder import config
 from PiFinder import utils
 from typing import Tuple
 import logging
@@ -32,7 +31,7 @@ class CameraInterface:
 
     def set_camera_config(
         self, exposure_time: float, gain: float
-    ) -> Tuple[float, float, float]:
+    ) -> Tuple[float, float]:
         pass
 
     def get_cam_type(self) -> str:
@@ -45,21 +44,23 @@ class CameraInterface:
             debug = False
 
             screen_direction = cfg.get_option("screen_direction")
+            camera_rotation = cfg.get_option("camera_rotation")
 
             # Set path for test images
             root_dir = os.path.realpath(
                 os.path.join(os.path.dirname(__file__), "..", "..")
             )
             test_image_path = os.path.join(
-                root_dir, "test_images", "pifinder_debug.png"
+                root_dir, "test_images", "pifinder_debug_02.png"
             )
 
             # 60 half-second cycles
             sleep_delay = 60
             while True:
-                if shared_state.power_state() == 0:
-                    time.sleep(0.5)
-
+                sleeping = utils.sleep_for_framerate(
+                    shared_state, limit_framerate=False
+                )
+                if sleeping:
                     # Even in sleep mode, we want to take photos every
                     # so often to update positions
                     sleep_delay -= 1
@@ -73,10 +74,13 @@ class CameraInterface:
                 if not debug:
                     base_image = self.capture()
                     base_image = base_image.convert("L")
-                    if screen_direction == "right":
-                        base_image = base_image.rotate(90)
+                    if camera_rotation is None:
+                        if screen_direction == "right":
+                            base_image = base_image.rotate(90)
+                        else:
+                            base_image = base_image.rotate(270)
                     else:
-                        base_image = base_image.rotate(270)
+                        base_image = base_image.rotate(int(camera_rotation) * -1)
                 else:
                     # load image and wait
                     base_image = Image.open(test_image_path)
@@ -86,25 +90,23 @@ class CameraInterface:
                 imu_end = shared_state.imu()
 
                 # see if we moved during exposure
-                moved = False
+                reading_diff = 0
                 if imu_start and imu_end:
                     reading_diff = (
                         abs(imu_start["pos"][0] - imu_end["pos"][0])
                         + abs(imu_start["pos"][1] - imu_end["pos"][1])
                         + abs(imu_start["pos"][2] - imu_end["pos"][2])
                     )
-                    if reading_diff > 0.1:
-                        moved = True
 
-                if not moved:
-                    camera_image.paste(base_image)
-                    shared_state.set_last_image_metadata(
-                        {
-                            "exposure_start": image_start_time,
-                            "exposure_end": image_end_time,
-                            "imu": imu_end,
-                        }
-                    )
+                camera_image.paste(base_image)
+                shared_state.set_last_image_metadata(
+                    {
+                        "exposure_start": image_start_time,
+                        "exposure_end": image_end_time,
+                        "imu": imu_end,
+                        "imu_delta": reading_diff,
+                    }
+                )
 
                 # Loop over any pending commands
                 # There may be more than one!
@@ -150,5 +152,5 @@ class CameraInterface:
                         filename = f"{utils.data_dir}/captures/{filename}.png"
                         self.capture_file(filename)
                         console_queue.put("CAM: Saved Image")
-        except (BrokenPipeError, EOFError):
-            logging.error("EOFError in Camera Loop")
+        except (BrokenPipeError, EOFError, FileNotFoundError):
+            logging.exception("EOFError in Camera Loop")

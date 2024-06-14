@@ -2,8 +2,8 @@
     "display_brightness": 255,
     "keypad_brightness": "0",
     "last_location": {
-        "lat": 34.030435,
-        "lon": -118.49151833333333,
+        "lat": 34.0,
+        "lon": -118.0,
         "altitude": 51.0,
         "gps_lock": false,
         "timezone": "America/Los_Angeles"
@@ -11,15 +11,19 @@
     "camera_exp": 750000,
     "camera_gain": 20,
     "screen_direction": "right",
+    "mount_type": "Alt/Az",
     "solver_debug": 0,
     "sleep_timeout": "30s",
-    "catalogs": [
+    "screen_off_timeout": "Off",
+    "hint_timeout": "2s",
+    "chart_display_radec": "Off",
+    "solve_pixel": [256, 256],
+    "active_catalogs": [
         "NGC",
-        "IC",
         "M",
-        "C",
-        "Col",
-        "SaA",
-        "Ta2"
+        "H",
+        "Str",
+        "PL",
+        "RDS"
     ]
 }

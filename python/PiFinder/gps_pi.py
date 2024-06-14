@@ -5,39 +5,80 @@ This module is for GPS related functions
 
 """
 import time
-from PiFinder import gps
+from gpsdclient import GPSDClient
+import logging
+from itertools import islice
+
+
+def is_tpv_accurate(tpv_dict):
+    """
+    Check the accuracy of the GPS fix
+    """
+    error = tpv_dict.get("ecefpAcc", tpv_dict.get("sep", 499))
+    # logging.debug("GPS: TPV: mode=%s, error=%s",  tpv_dict.get('mode'), error)
+    if tpv_dict.get("mode") == 3 and error < 500:
+        return True
+    else:
+        return False
 
 
 def gps_monitor(gps_queue, console_queue):
-    session = gps.gps(mode=gps.WATCH_ENABLE)
     gps_locked = False
     while True:
-        if session.read() == 0:
-            if session.valid:
-                if session.fix.mode == 3:  # 3d fix
-                    if (
-                        gps.isfinite(session.fix.latitude)
-                        and gps.isfinite(session.fix.longitude)
-                        and gps.isfinite(session.fix.altitude)
-                    ):
-                        if gps_locked == False:
-                            console_queue.put("GPS: Locked")
+        with GPSDClient(host="127.0.0.1") as client:
+            # see https://www.mankier.com/5/gpsd_json for the list of fields
+            while True:
+                logging.debug("GPS waking")
+                readings_filter = filter(
+                    lambda x: is_tpv_accurate(x),
+                    client.dict_stream(convert_datetime=True, filter=["TPV"]),
+                )
+                sky_filter = client.dict_stream(convert_datetime=True, filter=["SKY"])
+                readings_list = list(islice(readings_filter, 10))
+                sky_list = list(islice(sky_filter, 10))
+                if readings_list:
+                    result = min(
+                        readings_list,
+                        key=lambda x: x.get("ecefpAcc", x.get("sep", float("inf"))),
+                    )
+                    logging.debug("last reading is %s", result)
+                    if result.get("lat") and result.get("lon") and result.get("altHAE"):
+                        if gps_locked is False:
                             gps_locked = True
+                            console_queue.put("GPS: Locked")
                         msg = (
                             "fix",
                             {
-                                "lat": session.fix.latitude,
-                                "lon": session.fix.longitude,
-                                "altitude": session.fix.altitude,
+                                "lat": result.get("lat"),
+                                "lon": result.get("lon"),
+                                "altitude": result.get("altHAE"),
                             },
                         )
+                        logging.debug("GPS fix: %s", msg)
                         gps_queue.put(msg)
 
-                if gps.TIME_SET and session.utc:
-                    msg = ("time", session.utc)
-                    gps_queue.put(msg)
+                    # search from the newest first, quit if something is found
+                    for result in reversed(readings_list):
+                        if result.get("time"):
+                            msg = ("time", result.get("time"))
+                            logging.debug("Setting time to %s", result.get("time"))
+                            gps_queue.put(msg)
+                            break
+                else:
+                    logging.debug("GPS TPV client queue is empty")
 
-        else:
-            print("Error in GPS session")
-
-        time.sleep(0.5)
+                if sky_list:
+                    # search from the newest first, quit if something is found
+                    for result in reversed(sky_list):
+                        if result["class"] == "SKY" and "satellites" in result:
+                            # logging.debug(f"SKY packet found: {result['satellites']}")
+                            sats = result["satellites"]
+                            sats_seen = len(sats)
+                            sats_used = len(list(filter(lambda x: x["used"], sats)))
+                            num_sats = (sats_seen, sats_used)
+                            msg = ("satellites", num_sats)
+                            logging.debug(f"Number of satellites seen: {num_sats}")
+                            gps_queue.put(msg)
+                            break
+                logging.debug("GPS sleeping now")
+                time.sleep(7)

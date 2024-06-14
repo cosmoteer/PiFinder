@@ -11,6 +11,7 @@ OBJ_TYPES = {
     "D*": "Double star",
     "* ": "Star",
     "? ": "Unkn",
+    "Pla": "Planet",
 }
 
 OBJ_TYPE_MARKERS = {
@@ -19,6 +20,10 @@ OBJ_TYPE_MARKERS = {
     "Gb": "gc",
     "Nb": "neb",
     "Pl": "pneb",
+    "D*": "dstar",
+    "***": "dstar",
+    "Ast": "ast",
+    "Pla": "planet",
 }
 
 OBJ_DESCRIPTORS = {
